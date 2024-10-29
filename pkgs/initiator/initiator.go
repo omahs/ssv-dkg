@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	e2m_core "github.com/bloxapp/eth2-key-manager/core"
 	eth2_key_manager_core "github.com/bloxapp/eth2-key-manager/core"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/herumi/bls-eth-go-binary/bls"
@@ -100,13 +99,14 @@ func GenerateAggregatesKeyshares(keySharesArr []*wire.KeySharesCLI) (*wire.KeySh
 }
 
 // New creates a main initiator structure
-func New(operators wire.OperatorsCLI, logger *zap.Logger, ver string, certs []string) (*Initiator, error) {
+func New(operators wire.OperatorsCLI, logger *zap.Logger, ver string, certs []string, tlsInsecure bool) (*Initiator, error) {
 	client := req.C()
-	// set CA certificates if any
-	if len(certs) > 0 {
-		client.SetRootCertsFromFile(certs...)
-	} else {
+	// set CA certificates
+	if tlsInsecure {
+		logger.Warn("Dangerous, not secure!!! No CA certificates provided at 'clientCACertPath'. TLS 'InsecureSkipVerify' is set to true, accepting any TLS certificates authorities.")
 		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	} else {
+		client.SetRootCertsFromFile(certs...)
 	}
 	// Set timeout for operator responses
 	client.SetTimeout(30 * time.Second)
@@ -485,7 +485,7 @@ func (c *Initiator) CreateCeremonyResults(
 	}
 	var proofsArray []*wire.SignedProof
 	for _, res := range dkgResults {
-		proofsArray = append(proofsArray, &wire.SignedProof{res.SignedProof}) //nolint:all
+		proofsArray = append(proofsArray, &wire.SignedProof{SignedProof: res.SignedProof})
 	}
 	proofsData, err := json.Marshal(proofsArray)
 	if err != nil {
@@ -621,35 +621,35 @@ func parseDKGResultsFromBytes(responseResult [][]byte) (dkgResults []*spec.Resul
 }
 
 // SendInitMsg sends initial DKG ceremony message to participating operators from initiator
-func (c *Initiator) SendInitMsg(id [24]byte, init *spec.Init, operators []*spec.Operator) (map[uint64][]byte, map[uint64]error, error) {
+func (c *Initiator) SendInitMsg(id [24]byte, init *spec.Init, operators []*spec.Operator) (results map[uint64][]byte, errs map[uint64]error, err error) {
 	signedInitMsgBts, err := c.prepareAndSignMessage(init, wire.InitMessageType, id, c.Version)
 	if err != nil {
 		return nil, nil, err
 	}
-	results, errs := c.SendToAll(consts.API_INIT_URL, signedInitMsgBts, operators)
+	results, errs = c.SendToAll(consts.API_INIT_URL, signedInitMsgBts, operators)
 	return results, errs, nil
 }
 
-func (c *Initiator) SendResignMsg(id [24]byte, resign *wire.SignedResign, operators []*spec.Operator) (map[uint64][]byte, map[uint64]error, error) {
+func (c *Initiator) SendResignMsg(id [24]byte, resign *wire.SignedResign, operators []*spec.Operator) (results map[uint64][]byte, errs map[uint64]error, err error) {
 	signedResignMsgBts, err := c.prepareAndSignMessage(resign, wire.SignedResignMessageType, id, c.Version)
 	if err != nil {
 		return nil, nil, err
 	}
-	results, errs := c.SendToAll(consts.API_RESIGN_URL, signedResignMsgBts, operators)
+	results, errs = c.SendToAll(consts.API_RESIGN_URL, signedResignMsgBts, operators)
 	return results, errs, nil
 }
 
-func (c *Initiator) SendReshareMsg(id [24]byte, reshare *wire.SignedReshare, operators []*spec.Operator) (map[uint64][]byte, map[uint64]error, error) {
+func (c *Initiator) SendReshareMsg(id [24]byte, reshare *wire.SignedReshare, operators []*spec.Operator) (results map[uint64][]byte, errs map[uint64]error, err error) {
 	signedReshareMsgBts, err := c.prepareAndSignMessage(reshare, wire.SignedReshareMessageType, id, c.Version)
 	if err != nil {
 		return nil, nil, err
 	}
-	results, errs := c.SendToAll(consts.API_RESHARE_URL, signedReshareMsgBts, operators)
+	results, errs = c.SendToAll(consts.API_RESHARE_URL, signedReshareMsgBts, operators)
 	return results, errs, nil
 }
 
 // SendExchangeMsgs sends combined exchange messages to each operator participating in DKG ceremony
-func (c *Initiator) SendExchangeMsgs(id [24]byte, exchangeMsgs map[uint64][]byte, operators []*spec.Operator) (map[uint64][]byte, map[uint64]error, error) {
+func (c *Initiator) SendExchangeMsgs(id [24]byte, exchangeMsgs map[uint64][]byte, operators []*spec.Operator) (results map[uint64][]byte, errs map[uint64]error, err error) {
 	mltpl, err := makeMultipleSignedTransports(c.PrivateKey, id, exchangeMsgs)
 	if err != nil {
 		return nil, nil, err
@@ -658,11 +658,11 @@ func (c *Initiator) SendExchangeMsgs(id [24]byte, exchangeMsgs map[uint64][]byte
 	if err != nil {
 		return nil, nil, err
 	}
-	results, errs := c.SendToAll(consts.API_DKG_URL, mltplbyts, operators)
+	results, errs = c.SendToAll(consts.API_DKG_URL, mltplbyts, operators)
 	return results, errs, nil
 }
 
-func (c *Initiator) SendExchangeMsgsReshare(id [24]byte, exchangeMsgs map[uint64][]byte, operators []*spec.Operator) (map[uint64][]byte, map[uint64]error, error) {
+func (c *Initiator) SendExchangeMsgsReshare(id [24]byte, exchangeMsgs map[uint64][]byte, operators []*spec.Operator) (results map[uint64][]byte, errs map[uint64]error, err error) {
 	mltpl, err := makeMultipleSignedTransports(c.PrivateKey, id, exchangeMsgs)
 	if err != nil {
 		return nil, nil, err
@@ -671,12 +671,12 @@ func (c *Initiator) SendExchangeMsgsReshare(id [24]byte, exchangeMsgs map[uint64
 	if err != nil {
 		return nil, nil, err
 	}
-	results, errs := c.SendToAll(consts.API_DKG_URL, mltplbyts, operators)
+	results, errs = c.SendToAll(consts.API_DKG_URL, mltplbyts, operators)
 	return results, errs, nil
 }
 
 // SendKyberMsgs sends combined kyber messages to each operator participating in DKG ceremony
-func (c *Initiator) SendKyberMsgs(id [24]byte, kyberDeals map[uint64][]byte, operators []*spec.Operator) (map[uint64][]byte, map[uint64]error, error) {
+func (c *Initiator) SendKyberMsgs(id [24]byte, kyberDeals map[uint64][]byte, operators []*spec.Operator) (results map[uint64][]byte, errs map[uint64]error, err error) {
 	mltpl2, err := makeMultipleSignedTransports(c.PrivateKey, id, kyberDeals)
 	if err != nil {
 		return nil, nil, err
@@ -685,7 +685,7 @@ func (c *Initiator) SendKyberMsgs(id [24]byte, kyberDeals map[uint64][]byte, ope
 	if err != nil {
 		return nil, nil, err
 	}
-	results, errs := c.SendToAll(consts.API_DKG_URL, mltpl2byts, operators)
+	results, errs = c.SendToAll(consts.API_DKG_URL, mltpl2byts, operators)
 	return results, errs, nil
 }
 
@@ -818,7 +818,7 @@ func (c *Initiator) processPongMessage(res wire.PongResult) error {
 	return nil
 }
 
-func (c *Initiator) ConstructReshareMessage(oldOperatorIDs, newOperatorIDs []uint64, validatorPub []byte, ethnetwork e2m_core.Network, withdrawCreds []byte, owner common.Address, nonce, amount uint64, proofsData []*spec.SignedProof) (*wire.ReshareMessage, error) {
+func (c *Initiator) ConstructReshareMessage(oldOperatorIDs, newOperatorIDs []uint64, validatorPub []byte, ethnetwork eth2_key_manager_core.Network, withdrawCreds []byte, owner common.Address, nonce, amount uint64, proofsData []*spec.SignedProof) (*wire.ReshareMessage, error) {
 	if len(proofsData) == 0 {
 		return nil, fmt.Errorf("🤖 proofs are empty")
 	}
@@ -861,7 +861,7 @@ func (c *Initiator) ConstructReshareMessage(oldOperatorIDs, newOperatorIDs []uin
 	}, nil
 }
 
-func (c *Initiator) ConstructResignMessage(operatorIDs []uint64, validatorPub []byte, ethnetwork e2m_core.Network, withdrawCreds []byte, owner common.Address, nonce, amount uint64, proofsData []*spec.SignedProof) (*wire.ResignMessage, error) {
+func (c *Initiator) ConstructResignMessage(operatorIDs []uint64, validatorPub []byte, ethnetwork eth2_key_manager_core.Network, withdrawCreds []byte, owner common.Address, nonce, amount uint64, proofsData []*spec.SignedProof) (*wire.ResignMessage, error) {
 	if len(proofsData) == 0 {
 		return nil, fmt.Errorf("🤖 unmarshaled proofs object is empty")
 	}
@@ -926,7 +926,7 @@ func checkThreshold(responses map[uint64][]byte, errs map[uint64]error, oldOpera
 	return nil
 }
 
-func (c *Initiator) createBulkResults(resultsBytes [][][]byte, signedMsg interface{}, msgIDMap interface{}) ([]*wire.DepositDataCLI, []*wire.KeySharesCLI, [][]*wire.SignedProof, error) {
+func (c *Initiator) createBulkResults(resultsBytes [][][]byte, signedMsg, msgIDMap interface{}) ([]*wire.DepositDataCLI, []*wire.KeySharesCLI, [][]*wire.SignedProof, error) {
 	bulkDepositData := []*wire.DepositDataCLI{}
 	bulkKeyShares := []*wire.KeySharesCLI{}
 	bulkProofs := [][]*wire.SignedProof{}

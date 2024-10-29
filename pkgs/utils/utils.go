@@ -12,11 +12,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	eth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"go.uber.org/zap"
 
-	eth_crypto "github.com/ethereum/go-ethereum/crypto"
 	spec "github.com/ssvlabs/dkg-spec"
 	"github.com/ssvlabs/ssv-dkg/pkgs/wire"
 )
@@ -202,48 +203,64 @@ func GetOpIDs(ops []*spec.Operator) []uint64 {
 	return ids
 }
 
-func ValidateOpsLen(len int) error {
-	switch len {
+func ValidateOpsLen(length int) error {
+	switch length {
 	case 4, 7, 10, 13:
 		return nil
 	default:
-		return fmt.Errorf("amount of operators should be 4,7,10,13: got %d", len)
+		return fmt.Errorf("amount of operators should be 4,7,10,13: got %d", length)
 	}
 }
 
-func GetMessageHash(msg interface{}) ([32]byte, error) {
-	hash := [32]byte{}
+func GetMessageString(msg interface{}) (string, error) {
+	var hexString string
 	switch msg := msg.(type) {
 	case wire.SSZMarshaller:
 		// Single message case
 		msgBytes, err := msg.MarshalSSZ()
 		if err != nil {
-			return hash, err
+			return "", err
 		}
-		copy(hash[:], eth_crypto.Keccak256(msgBytes))
+		hexString = hex.EncodeToString(eth_crypto.Keccak256(msgBytes))
 	case []*wire.ResignMessage:
 		msgBytes := []byte{}
 		for _, resign := range msg {
 			resignBytes, err := resign.MarshalSSZ()
 			if err != nil {
-				return hash, err
+				return "", err
 			}
 			msgBytes = append(msgBytes, resignBytes...)
 		}
-		copy(hash[:], eth_crypto.Keccak256(msgBytes))
+		hexString = hex.EncodeToString(eth_crypto.Keccak256(msgBytes))
 	case []*wire.ReshareMessage:
 		msgBytes := []byte{}
 		for _, reshare := range msg {
 			reshareBytes, err := reshare.MarshalSSZ()
 			if err != nil {
-				return hash, err
+				return "", err
 			}
 			msgBytes = append(msgBytes, reshareBytes...)
 		}
-		copy(hash[:], eth_crypto.Keccak256(msgBytes))
+		hexString = hex.EncodeToString(eth_crypto.Keccak256(msgBytes))
 	default:
-		return hash, fmt.Errorf("unexpected message type: %T", msg)
+		return "", fmt.Errorf("unexpected message type: %T", msg)
 	}
+	return hexString, nil
+}
+
+func GetMessageHash(msg interface{}) ([32]byte, error) {
+	hash := [32]byte{}
+	hexString, err := GetMessageString(msg)
+	if err != nil {
+		return hash, err
+	}
+	var finalMsg []byte
+	prefix := []byte("\x19Ethereum Signed Message:\n")
+	msgLen := []byte(strconv.Itoa(len(hexString)))
+	finalMsg = append(finalMsg, prefix...)
+	finalMsg = append(finalMsg, msgLen...)
+	finalMsg = append(finalMsg, hexString...)
+	copy(hash[:], eth_crypto.Keccak256(finalMsg))
 	return hash, nil
 }
 

@@ -11,12 +11,12 @@ import (
 	kyber_bls12381 "github.com/drand/kyber-bls12381"
 	"github.com/drand/kyber/pairing"
 	kyber_share "github.com/drand/kyber/share"
-	"github.com/drand/kyber/share/dkg"
 	kyber_dkg "github.com/drand/kyber/share/dkg"
-	drand_bls "github.com/drand/kyber/sign/bls" //nolint:all
+	drand_bls "github.com/drand/kyber/sign/bls" //nolint:all //deprecated: use only NewSchemeOnG2 func
 	"github.com/drand/kyber/util/random"
 	"github.com/herumi/bls-eth-go-binary/bls"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 
 	spec "github.com/ssvlabs/dkg-spec"
 	spec_crypto "github.com/ssvlabs/dkg-spec/crypto"
@@ -24,7 +24,6 @@ import (
 	"github.com/ssvlabs/ssv-dkg/pkgs/crypto"
 	"github.com/ssvlabs/ssv-dkg/pkgs/utils"
 	"github.com/ssvlabs/ssv-dkg/pkgs/wire"
-	"go.uber.org/zap"
 )
 
 // DKGdata structure to store at LocalOwner information about initial message parameters and secret scalar to be used as input for DKG protocol
@@ -738,7 +737,7 @@ func (o *LocalOwner) StartReshareDKGNewNodes() error {
 		coefs = append(coefs, p)
 	}
 	suite := kyber_bls12381.NewBLS12381Suite()
-	exp := kyber_share.NewPubPoly(suite.G1().(dkg.Suite), suite.G1().(dkg.Suite).Point().Base(), coefs)
+	exp := kyber_share.NewPubPoly(suite.G1().(kyber_dkg.Suite), suite.G1().(kyber_dkg.Suite).Point().Base(), coefs)
 	bytsPK, err := exp.Commit().MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("could not marshal share %w", err)

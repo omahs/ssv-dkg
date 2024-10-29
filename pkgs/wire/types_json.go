@@ -147,22 +147,6 @@ func (op *Operator) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func NewReshareFromSpec(r spec.Reshare) *Reshare {
-	return &Reshare{r}
-}
-
-func NewResignFromSpec(r spec.Resign) *Resign {
-	return &Resign{r}
-}
-
-func (r *Reshare) ToSpecReshare() *spec.Reshare {
-	return &r.Reshare
-}
-
-func (r *Resign) ToSpecResign() *spec.Resign {
-	return &r.Resign
-}
-
 func NewOperatorFromSpec(op spec.Operator) *Operator {
 	return &Operator{op}
 }
@@ -300,7 +284,7 @@ type SignedBulkResignJSON struct {
 func (br *SignedBulkResign) MarshalJSON() ([]byte, error) {
 	resignMsgs := make([]*Resign, len(br.ResignMsgs))
 	for i, r := range br.ResignMsgs {
-		resignMsgs[i] = NewResignFromSpec(*r)
+		resignMsgs[i] = NewResignFromSpec(r)
 	}
 	return json.Marshal(&SignedBulkResignJSON{
 		ResignMsgs: resignMsgs,
@@ -328,7 +312,7 @@ func (br *SignedBulkResign) UnmarshalJSON(data []byte) error {
 func (br *SignedBulkResign) MarshalResignMessagesJSON() ([]byte, error) {
 	resignMsgs := make([]*Resign, len(br.ResignMsgs))
 	for i, r := range br.ResignMsgs {
-		resignMsgs[i] = NewResignFromSpec(*r)
+		resignMsgs[i] = NewResignFromSpec(r)
 	}
 	return json.Marshal(resignMsgs)
 }
@@ -337,11 +321,20 @@ type Resign struct {
 	spec.Resign
 }
 type ResignJSON struct {
-	ValidatorPubKey       string `json:"ValidatorPubKey"`
-	Fork                  string `json:"Fork"`
-	WithdrawalCredentials string `json:"WithdrawalCredentials"`
-	Owner                 string `json:"Owner"`
-	Nonce                 uint64 `json:"Nonce"`
+	ValidatorPubKey       string `json:"validatorPubKey"`
+	Fork                  string `json:"fork"`
+	WithdrawalCredentials string `json:"withdrawalCredentials"`
+	Owner                 string `json:"owner"`
+	Nonce                 uint64 `json:"nonce"`
+	Amount                uint64 `json:"amount"`
+}
+
+func (r *Resign) ToSpecResign() *spec.Resign {
+	return &r.Resign
+}
+
+func NewResignFromSpec(r *spec.Resign) *Resign {
+	return &Resign{*r}
 }
 
 func (r *Resign) MarshalJSON() ([]byte, error) {
@@ -396,7 +389,7 @@ type SignedBulkReshareJSON struct {
 func (br *SignedBulkReshare) MarshalJSON() ([]byte, error) {
 	reshareMsgs := make([]*Reshare, len(br.ReshareMsgs))
 	for i, r := range br.ReshareMsgs {
-		reshareMsgs[i] = NewReshareFromSpec(*r)
+		reshareMsgs[i] = NewReshareFromSpec(r)
 	}
 	return json.Marshal(&SignedBulkReshareJSON{
 		ReshareMsgs: reshareMsgs,
@@ -424,13 +417,21 @@ func (br *SignedBulkReshare) UnmarshalJSON(data []byte) error {
 func (br *SignedBulkReshare) MarshalReshareMessagesJSON() ([]byte, error) {
 	reshareMsgs := make([]*Reshare, len(br.ReshareMsgs))
 	for i, r := range br.ReshareMsgs {
-		reshareMsgs[i] = NewReshareFromSpec(*r)
+		reshareMsgs[i] = NewReshareFromSpec(r)
 	}
 	return json.Marshal(reshareMsgs)
 }
 
 type Reshare struct {
 	spec.Reshare
+}
+
+func NewReshareFromSpec(r *spec.Reshare) *Reshare {
+	return &Reshare{*r}
+}
+
+func (r *Reshare) ToSpecReshare() *spec.Reshare {
+	return &r.Reshare
 }
 
 func (r *Reshare) MarshalJSON() ([]byte, error) {
@@ -458,23 +459,25 @@ func (r *Reshare) MarshalJSON() ([]byte, error) {
 
 type ReshareJSON struct {
 	// ValidatorPubKey public key corresponding to the shared private key
-	ValidatorPubKey string `json:"ValidatorPubKey"`
+	ValidatorPubKey string `json:"validatorPubKey"`
 	// Operators involved in the DKG
-	OldOperators []*Operator `json:"OldOperators"`
+	OldOperators []*Operator `json:"oldOperators"`
 	// Operators involved in the resharing
-	NewOperators []*Operator `json:"NewOperators"`
+	NewOperators []*Operator `json:"newOperators"`
 	// OldT is the old threshold for signing
-	OldT uint64 `json:"OldT"`
+	OldT uint64 `json:"oldT"`
 	// NewT is the old threshold for signing
-	NewT uint64 `json:"NewT"`
+	NewT uint64 `json:"newT"`
 	// Fork ethereum fork for signing
-	Fork string `json:"Fork"`
+	Fork string `json:"fork"`
 	// WithdrawalCredentials for deposit data
-	WithdrawalCredentials string `json:"WithdrawalCredentials"`
+	WithdrawalCredentials string `json:"withdrawalCredentials"`
 	// Owner address
-	Owner string `json:"Owner"`
+	Owner string `json:"owner"`
 	// Owner nonce
-	Nonce uint64 `json:"Nonce"`
+	Nonce uint64 `json:"nonce"`
+	// Amount in Gwei (https://eips.ethereum.org/EIPS/eip-7251)
+	Amount uint64 `json:"amount"`
 }
 
 func (r *Reshare) UnmarshalJSON(data []byte) error {
@@ -516,6 +519,186 @@ func (r *Reshare) UnmarshalJSON(data []byte) error {
 	r.NewOperators = make([]*spec.Operator, len(resJSON.NewOperators))
 	for i, op := range resJSON.NewOperators {
 		r.NewOperators[i] = op.ToSpecOperator()
+	}
+	return nil
+}
+
+type ResignMessageJSON struct {
+	Operators []*Operator       `json:"Operators"`
+	Resign    ResignJSON        `json:"Resign"`
+	Proofs    []signedProofJSON `json:"Proofs"`
+}
+
+func (r *ResignMessage) MarshalJSON() ([]byte, error) {
+	var result ResignMessageJSON
+	specOperators := make([]*Operator, len(r.Operators))
+	for i, op := range r.Operators {
+		specOperators[i] = NewOperatorFromSpec(*op)
+	}
+	result.Operators = specOperators
+	result.Resign = ResignJSON{
+		ValidatorPubKey:       "0x" + hex.EncodeToString(r.Resign.ValidatorPubKey),
+		Fork:                  "0x" + hex.EncodeToString(r.Resign.Fork[:]),
+		WithdrawalCredentials: "0x" + hex.EncodeToString(r.Resign.WithdrawalCredentials),
+		Owner:                 "0x" + hex.EncodeToString(r.Resign.Owner[:]),
+		Nonce:                 r.Resign.Nonce,
+		Amount:                r.Resign.Amount,
+	}
+	for _, sp := range r.Proofs {
+		if sp.Proof == nil || sp.Proof.ValidatorPubKey == nil || sp.Proof.EncryptedShare == nil || sp.Proof.SharePubKey == nil || sp.Proof.Owner == [20]byte{0} || sp.Signature == nil {
+			return nil, fmt.Errorf("cant marshal json, signed proof json is malformed")
+		}
+		result.Proofs = append(result.Proofs, signedProofJSON{
+			Proof: &Proof{spec.Proof{
+				ValidatorPubKey: sp.Proof.ValidatorPubKey,
+				EncryptedShare:  sp.Proof.EncryptedShare,
+				SharePubKey:     sp.Proof.SharePubKey,
+				Owner:           sp.Proof.Owner,
+			}},
+			Signature: hex.EncodeToString(sp.Signature),
+		})
+	}
+	return json.Marshal(result)
+}
+
+func (r *ResignMessage) UnmarshalJSON(data []byte) error {
+	var resJSON ResignMessageJSON
+	if err := json.Unmarshal(data, &resJSON); err != nil {
+		return err
+	}
+	r.Operators = make([]*spec.Operator, len(resJSON.Operators))
+	for i, op := range resJSON.Operators {
+		r.Operators[i] = op.ToSpecOperator()
+	}
+	r.Resign = &spec.Resign{}
+	val, err := hex.DecodeString(strings.TrimPrefix(resJSON.Resign.ValidatorPubKey, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid validator public key %w", err)
+	}
+	r.Resign.ValidatorPubKey = val
+	fork, err := hex.DecodeString(strings.TrimPrefix(resJSON.Resign.Fork, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid fork %w", err)
+	}
+	copy(r.Resign.Fork[:], fork)
+	withdrawalCredentials, err := hex.DecodeString(strings.TrimPrefix(resJSON.Resign.WithdrawalCredentials, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid withdrawal credentials %w", err)
+	}
+	r.Resign.WithdrawalCredentials = withdrawalCredentials
+	owner, err := hex.DecodeString(strings.TrimPrefix(resJSON.Resign.Owner, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid owner %w", err)
+	}
+	copy(r.Resign.Owner[:], owner)
+	r.Resign.Nonce = resJSON.Resign.Nonce
+	r.Resign.Amount = resJSON.Resign.Amount
+	r.Proofs = make([]*spec.SignedProof, len(resJSON.Proofs))
+	for i, sp := range resJSON.Proofs {
+		sig, err := hex.DecodeString(sp.Signature)
+		if err != nil {
+			return fmt.Errorf("cant decode hex at proof signature %w", err)
+		}
+		r.Proofs[i] = &spec.SignedProof{
+			Proof:     &sp.Proof.Proof,
+			Signature: sig,
+		}
+	}
+	return nil
+}
+
+type ReshareMessageJSON struct {
+	Reshare ReshareJSON       `json:"Reshare"`
+	Proofs  []signedProofJSON `json:"Proofs"`
+}
+
+func (r *ReshareMessage) MarshalJSON() ([]byte, error) {
+	var result ReshareMessageJSON
+	specOldOperators := make([]*Operator, len(r.Reshare.OldOperators))
+	for i, op := range r.Reshare.OldOperators {
+		specOldOperators[i] = NewOperatorFromSpec(*op)
+	}
+	specNewOperators := make([]*Operator, len(r.Reshare.NewOperators))
+	for i, op := range r.Reshare.NewOperators {
+		specNewOperators[i] = NewOperatorFromSpec(*op)
+	}
+	result.Reshare = ReshareJSON{
+		ValidatorPubKey:       "0x" + hex.EncodeToString(r.Reshare.ValidatorPubKey),
+		OldOperators:          specOldOperators,
+		NewOperators:          specNewOperators,
+		OldT:                  r.Reshare.OldT,
+		NewT:                  r.Reshare.NewT,
+		Fork:                  "0x" + hex.EncodeToString(r.Reshare.Fork[:]),
+		WithdrawalCredentials: "0x" + hex.EncodeToString(r.Reshare.WithdrawalCredentials),
+		Owner:                 "0x" + hex.EncodeToString(r.Reshare.Owner[:]),
+		Nonce:                 r.Reshare.Nonce,
+		Amount:                r.Reshare.Amount,
+	}
+	for _, sp := range r.Proofs {
+		if sp.Proof == nil || sp.Proof.ValidatorPubKey == nil || sp.Proof.EncryptedShare == nil || sp.Proof.SharePubKey == nil || sp.Proof.Owner == [20]byte{0} || sp.Signature == nil {
+			return nil, fmt.Errorf("cant marshal json, signed proof json is malformed")
+		}
+		result.Proofs = append(result.Proofs, signedProofJSON{
+			Proof: &Proof{spec.Proof{
+				ValidatorPubKey: sp.Proof.ValidatorPubKey,
+				EncryptedShare:  sp.Proof.EncryptedShare,
+				SharePubKey:     sp.Proof.SharePubKey,
+				Owner:           sp.Proof.Owner,
+			}},
+			Signature: hex.EncodeToString(sp.Signature),
+		})
+	}
+	return json.Marshal(result)
+}
+
+func (r *ReshareMessage) UnmarshalJSON(data []byte) error {
+	var resJSON ReshareMessageJSON
+	if err := json.Unmarshal(data, &resJSON); err != nil {
+		return err
+	}
+	r.Reshare = &spec.Reshare{}
+	val, err := hex.DecodeString(strings.TrimPrefix(resJSON.Reshare.ValidatorPubKey, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid validator public key %w", err)
+	}
+	r.Reshare.ValidatorPubKey = val
+	fork, err := hex.DecodeString(strings.TrimPrefix(resJSON.Reshare.Fork, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid fork %w", err)
+	}
+	copy(r.Reshare.Fork[:], fork)
+	withdrawalCredentials, err := hex.DecodeString(strings.TrimPrefix(resJSON.Reshare.WithdrawalCredentials, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid withdrawal credentials %w", err)
+	}
+	r.Reshare.WithdrawalCredentials = withdrawalCredentials
+	owner, err := hex.DecodeString(strings.TrimPrefix(resJSON.Reshare.Owner, "0x"))
+	if err != nil {
+		return fmt.Errorf("invalid owner %w", err)
+	}
+	copy(r.Reshare.Owner[:], owner)
+	r.Reshare.Nonce = resJSON.Reshare.Nonce
+	r.Reshare.Amount = resJSON.Reshare.Amount
+	r.Reshare.OldT = resJSON.Reshare.OldT
+	r.Reshare.NewT = resJSON.Reshare.NewT
+	r.Reshare.OldOperators = make([]*spec.Operator, len(resJSON.Reshare.OldOperators))
+	for i, op := range resJSON.Reshare.OldOperators {
+		r.Reshare.OldOperators[i] = op.ToSpecOperator()
+	}
+	r.Reshare.NewOperators = make([]*spec.Operator, len(resJSON.Reshare.NewOperators))
+	for i, op := range resJSON.Reshare.NewOperators {
+		r.Reshare.NewOperators[i] = op.ToSpecOperator()
+	}
+	r.Proofs = make([]*spec.SignedProof, len(resJSON.Proofs))
+	for i, sp := range resJSON.Proofs {
+		sig, err := hex.DecodeString(sp.Signature)
+		if err != nil {
+			return fmt.Errorf("cant decode hex at proof signature %w", err)
+		}
+		r.Proofs[i] = &spec.SignedProof{
+			Proof:     &sp.Proof.Proof,
+			Signature: sig,
+		}
 	}
 	return nil
 }

@@ -43,10 +43,10 @@ func TestResignValidEOASig(t *testing.T) {
 		},
 	}
 	servers, ops := createOperatorsFromExamplesFolder(t, version, stubClient)
-	clnt, err := initiator.New(ops, logger, version, rootCert)
+	clnt, err := initiator.New(ops, logger, version, rootCert, false)
 	require.NoError(t, err)
 	t.Run("test resign 4 operators", func(t *testing.T) {
-		signedProofs, err := wire.LoadProofs("./stubs/4/000001-0xaa57eab07f1a740672d0c106867d366c798d3b932d373c88cf047da1a3c16d0816ac58bab5a9d6f6f4b63a07608f8f39/proofs.json")
+		signedProofs, err := wire.LoadProofs("./stubs/bulk/4/ceremony-2024-10-21--09-56-54.375/000001-0x801bca4e379a2e240ed004acbe8f905a0a43f3322faa251fbb9c8d4d49af8ba9c669e930ea7caa234cb7d537d600e9ee/proofs.json")
 		require.NoError(t, err)
 		// re-sign
 		id := spec.NewID()
@@ -91,10 +91,10 @@ func TestResignInvalidEOASig(t *testing.T) {
 		},
 	}
 	servers, ops := createOperatorsFromExamplesFolder(t, version, stubClient)
-	c, err := initiator.New(ops, logger, version, rootCert)
+	c, err := initiator.New(ops, logger, version, rootCert, false)
 	require.NoError(t, err)
 	t.Run("test resign 4 operators", func(t *testing.T) {
-		signedProofs, err := wire.LoadProofs("./stubs/4/000001-0xaa57eab07f1a740672d0c106867d366c798d3b932d373c88cf047da1a3c16d0816ac58bab5a9d6f6f4b63a07608f8f39/proofs.json")
+		signedProofs, err := wire.LoadProofs("./stubs/bulk/4/ceremony-2024-10-21--09-56-54.375/000001-0x801bca4e379a2e240ed004acbe8f905a0a43f3322faa251fbb9c8d4d49af8ba9c669e930ea7caa234cb7d537d600e9ee/proofs.json")
 		require.NoError(t, err)
 		ops, err := initiator.ValidatedOperatorData(ids, c.Operators)
 		require.NoError(t, err)
@@ -147,10 +147,10 @@ func TestResignValidContractSig(t *testing.T) {
 		},
 	}
 	servers, ops := createOperatorsFromExamplesFolder(t, version, stubClient)
-	clnt, err := initiator.New(ops, logger, version, rootCert)
+	clnt, err := initiator.New(ops, logger, version, rootCert, false)
 	require.NoError(t, err)
 	t.Run("test resign 4 operators", func(t *testing.T) {
-		signedProofs, err := wire.LoadProofs("./stubs/4/000001-0xaa57eab07f1a740672d0c106867d366c798d3b932d373c88cf047da1a3c16d0816ac58bab5a9d6f6f4b63a07608f8f39/proofs.json")
+		signedProofs, err := wire.LoadProofs("./stubs/bulk/4/ceremony-2024-10-21--09-56-54.375/000001-0x801bca4e379a2e240ed004acbe8f905a0a43f3322faa251fbb9c8d4d49af8ba9c669e930ea7caa234cb7d537d600e9ee/proofs.json")
 		require.NoError(t, err)
 		// re-sign
 		id := spec.NewID()
@@ -206,10 +206,10 @@ func TestResignInvalidContractSig(t *testing.T) {
 		},
 	}
 	servers, ops := createOperatorsFromExamplesFolder(t, version, stubClient)
-	clnt, err := initiator.New(ops, logger, version, rootCert)
+	clnt, err := initiator.New(ops, logger, version, rootCert, false)
 	require.NoError(t, err)
 	t.Run("test resign 4 operators", func(t *testing.T) {
-		signedProofs, err := wire.LoadProofs("./stubs/4/000001-0xaa57eab07f1a740672d0c106867d366c798d3b932d373c88cf047da1a3c16d0816ac58bab5a9d6f6f4b63a07608f8f39/proofs.json")
+		signedProofs, err := wire.LoadProofs("./stubs/bulk/4/ceremony-2024-10-21--09-56-54.375/000001-0x801bca4e379a2e240ed004acbe8f905a0a43f3322faa251fbb9c8d4d49af8ba9c669e930ea7caa234cb7d537d600e9ee/proofs.json")
 		require.NoError(t, err)
 		// re-sign
 		id := spec.NewID()
