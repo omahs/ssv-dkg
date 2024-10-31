@@ -902,7 +902,7 @@ func checkThreshold(responses map[uint64][]byte, errs map[uint64]error, oldOpera
 	for _, op := range newOperators {
 		if err, ok := errs[op.ID]; ok {
 			if strings.Contains(err.Error(), "invalid ssz encoding") {
-				err = fmt.Errorf("%w, operator probably of old version 1.*.*, please upgrade", err)
+				err = fmt.Errorf("%w, operator probably of old version, please upgrade", err)
 			}
 			finalErr = errors.Join(finalErr, fmt.Errorf("error: %w", err))
 		}

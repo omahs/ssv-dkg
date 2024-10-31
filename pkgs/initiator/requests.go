@@ -58,7 +58,7 @@ func (c *Initiator) GetAndCollect(op wire.OperatorCLI, method string) ([]byte, e
 		if parseErr == nil {
 			return nil, fmt.Errorf("%v", errmsg)
 		}
-		return nil, fmt.Errorf("operator failed with: %w, probably of old version 1.*.*, please upgrade", errors.New(string(resdata)))
+		return nil, fmt.Errorf("operator failed with: %w, probably of old version, please upgrade", errors.New(string(resdata)))
 	}
 	return resdata, nil
 }
