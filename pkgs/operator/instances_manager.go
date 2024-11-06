@@ -195,7 +195,7 @@ func (s *Switch) HandleInstanceOperation(reqID [24]byte, transportMsg *wire.Tran
 		resps := [][]byte{}
 		// Run all resign/reshare ceremonies
 		for _, instance := range signedResign.Messages {
-			resp, err := s.runInstance(instance, allOps, initiatorPubKey, operationType)
+			resp, err := s.runInstance(reqID, instance, allOps, initiatorPubKey, operationType)
 			if err != nil {
 				return nil, fmt.Errorf("%s: failed to run instance: %w", operationType, err)
 			}
@@ -246,7 +246,7 @@ func (s *Switch) HandleInstanceOperation(reqID [24]byte, transportMsg *wire.Tran
 		resps := [][]byte{}
 		// Run all resign/reshare ceremonies
 		for _, instance := range signedReshare.Messages {
-			resp, err := s.runInstance(instance, allOps, initiatorPubKey, operationType)
+			resp, err := s.runInstance(reqID, instance, allOps, initiatorPubKey, operationType)
 			if err != nil {
 				return nil, fmt.Errorf("%s: failed to run instance: %w", operationType, err)
 			}
@@ -296,23 +296,26 @@ func (s *Switch) validateInstances(reqID InstanceID) error {
 	return nil
 }
 
-func (s *Switch) runInstance(instance interface{}, allOps []*spec.Operator, initiatorPubKey *rsa.PublicKey, operationType string) ([]byte, error) {
-	reqID, err := utils.GetReqIDfromMsg(instance)
+func (s *Switch) runInstance(reqID [24]byte, instance interface{}, allOps []*spec.Operator, initiatorPubKey *rsa.PublicKey, operationType string) ([]byte, error) {
+	instanceID := [24]byte{}
+	hash, err := utils.GetReqIDfromMsg(instance)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.validateInstances(reqID); err != nil {
+	copy(instanceID[:12], reqID[:12])
+	copy(instanceID[12:24], hash[:12])
+	if err := s.validateInstances(instanceID); err != nil {
 		return nil, err
 	}
 
-	inst, resp, err := s.CreateInstance(reqID, allOps, instance, initiatorPubKey)
+	inst, resp, err := s.CreateInstance(instanceID, allOps, instance, initiatorPubKey)
 	if err != nil {
 		return nil, fmt.Errorf("%s: failed to create instance: %w", operationType, err)
 	}
 
 	s.Mtx.Lock()
-	s.Instances[reqID] = inst
-	s.InstanceInitTime[reqID] = time.Now()
+	s.Instances[instanceID] = inst
+	s.InstanceInitTime[instanceID] = time.Now()
 	s.Mtx.Unlock()
 
 	return resp, nil
