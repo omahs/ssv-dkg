@@ -863,8 +863,9 @@ func (o *LocalOwner) CheckIncomingOperators(msgs []*wire.SignedTransport) (map[u
 			return nil, fmt.Errorf("no init or reshare operators found at incoming messages")
 		}
 		return opsAtMsgs, nil
+	default:
+		return nil, fmt.Errorf("cant get init/reshare at LocalOwner")
 	}
-	return nil, nil
 }
 
 func FindOperatorsAtList(list map[uint64]*spec.Operator, ops []*spec.Operator) ([]*spec.Operator, error) {
