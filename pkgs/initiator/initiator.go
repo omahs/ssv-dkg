@@ -14,10 +14,11 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	eth2_key_manager_core "github.com/bloxapp/eth2-key-manager/core"
+	kyber_bls12381 "github.com/drand/kyber-bls12381"
+	kyber_dkg "github.com/drand/kyber/share/dkg"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/herumi/bls-eth-go-binary/bls"
 	"github.com/imroc/req/v3"
-	"go.uber.org/zap"
 
 	spec "github.com/ssvlabs/dkg-spec"
 	spec_crypto "github.com/ssvlabs/dkg-spec/crypto"
@@ -25,6 +26,7 @@ import (
 	"github.com/ssvlabs/ssv-dkg/pkgs/crypto"
 	"github.com/ssvlabs/ssv-dkg/pkgs/utils"
 	"github.com/ssvlabs/ssv-dkg/pkgs/wire"
+	"go.uber.org/zap"
 )
 
 type VerifyMessageSignatureFunc func(pub *rsa.PublicKey, msg, sig []byte) error
@@ -442,7 +444,7 @@ func (c *Initiator) CreateCeremonyResults(
 	nonce uint64,
 	amount phase0.Gwei,
 ) (*wire.DepositDataCLI, *wire.KeySharesCLI, []*wire.SignedProof, error) {
-	dkgResults, err := parseDKGResultsFromBytes(resultsBytes)
+	dkgResults, err := c.parseDKGResultsFromBytes(resultsBytes)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -580,7 +582,7 @@ func (c *Initiator) processDKGResultResponse(dkgResults []*spec.Result,
 	return depositDataJson, keyshares, nil
 }
 
-func parseDKGResultsFromBytes(responseResult [][]byte) (dkgResults []*spec.Result, finalErr error) {
+func (c *Initiator) parseDKGResultsFromBytes(responseResult [][]byte) (dkgResults []*spec.Result, finalErr error) {
 	for i := 0; i < len(responseResult); i++ {
 		msg := responseResult[i]
 		tsp := &wire.SignedTransport{}
@@ -588,12 +590,53 @@ func parseDKGResultsFromBytes(responseResult [][]byte) (dkgResults []*spec.Resul
 			finalErr = errors.Join(finalErr, err)
 			continue
 		}
+		ops, err := c.Operators.ToSpecOperators()
+		if err != nil {
+			finalErr = errors.Join(finalErr, err)
+			continue
+		}
+		from, err := spec.OperatorIDByPubKey(ops, tsp.Signer)
+		if err != nil {
+			finalErr = errors.Join(finalErr, fmt.Errorf("cant find operator ID message from operator ID %d: %w", from, err))
+			continue
+		}
 		if tsp.Message.Type == wire.ErrorMessageType {
 			finalErr = errors.Join(finalErr, fmt.Errorf("%s", string(tsp.Message.Data)))
 			continue
 		}
 		if tsp.Message.Type != wire.OutputMessageType {
-			finalErr = errors.Join(finalErr, fmt.Errorf("wrong DKG result message type: exp %s, got %s ", wire.OutputMessageType.String(), tsp.Message.Type.String()))
+			// check if response/justification bundle received
+			if tsp.Message.Type == wire.KyberMessageType {
+				kyberMsg := &wire.KyberMessage{}
+				if err := kyberMsg.UnmarshalSSZ(tsp.Message.Data); err != nil {
+					finalErr = errors.Join(finalErr, err)
+					continue
+				}
+				switch kyberMsg.Type {
+				case wire.KyberResponseBundleMessageType:
+					response, err := wire.DecodeResponseBundle(kyberMsg.Data)
+					if err != nil {
+						finalErr = errors.Join(finalErr, err)
+						continue
+					} else {
+						finalErr = errors.Join(finalErr, fmt.Errorf("received response message: from %d, %v", from, response))
+						continue
+					}
+				case wire.KyberJustificationBundleMessageType:
+					justification, err := wire.DecodeJustificationBundle(kyberMsg.Data, kyber_bls12381.NewBLS12381Suite().G1().(kyber_dkg.Suite))
+					if err != nil {
+						finalErr = errors.Join(finalErr, err)
+						continue
+					} else {
+						finalErr = errors.Join(finalErr, fmt.Errorf("received justification message: from %d, %v", from, justification))
+						continue
+					}
+				default:
+					finalErr = errors.Join(finalErr, fmt.Errorf("received message: from %d, but wrong type %s ", from, kyberMsg.Type))
+					continue
+				}
+			}
+			finalErr = errors.Join(finalErr, fmt.Errorf("wrong DKG result message type from oprator ID %d: exp %s, got %s ", from, wire.OutputMessageType.String(), tsp.Message.Type.String()))
 			continue
 		}
 		result := &spec.Result{}
@@ -931,7 +974,7 @@ func (c *Initiator) createBulkResults(resultsBytes [][][]byte, signedMsg, msgIDM
 	bulkKeyShares := []*wire.KeySharesCLI{}
 	bulkProofs := [][]*wire.SignedProof{}
 	for _, ceremonyResult := range resultsBytes {
-		dkgResults, err := parseDKGResultsFromBytes(ceremonyResult)
+		dkgResults, err := c.parseDKGResultsFromBytes(ceremonyResult)
 		if err != nil {
 			return nil, nil, nil, err
 		}

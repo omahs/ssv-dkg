@@ -36,7 +36,7 @@ func NewBoard(
 
 // PushDeals implements a kyber DKG Board interface to broadcast deal bundle
 func (b *Board) PushDeals(bundle *dkg.DealBundle) {
-	b.logger.Debug("Pushing deal bundle: ", zap.Int("num of deals", len(bundle.Deals)))
+	b.logger.Info("Pushing deal bundle: ", zap.Int("num of deals", len(bundle.Deals)))
 
 	byts, err := wire2.EncodeDealBundle(bundle)
 	if err != nil {
@@ -61,7 +61,21 @@ func (b *Board) IncomingDeal() <-chan dkg.DealBundle {
 
 // PushResponses implements a kyber DKG Board interface to broadcast responses
 func (b *Board) PushResponses(bundle *dkg.ResponseBundle) {
-	// dont push responses to nodes, allowing them to finish with error
+	b.logger.Info("Pushing response bundle: ", zap.Int("num of responses", len(bundle.Responses)))
+	byts, err := wire2.EncodeResponseBundle(bundle)
+	if err != nil {
+		b.logger.Error("error encoding response bundle", zap.Error(err))
+		return
+	}
+	msg := &wire2.KyberMessage{
+		Type: wire2.KyberResponseBundleMessageType,
+		Data: byts,
+	}
+
+	if err := b.broadcastF(msg); err != nil {
+		b.logger.Error("error broadcasting response bundle", zap.Error(err))
+		return
+	}
 }
 
 // IncomingResponse implements a kyber DKG Board interface function
@@ -71,7 +85,21 @@ func (b *Board) IncomingResponse() <-chan dkg.ResponseBundle {
 
 // PushJustifications implements a kyber DKG interface to broadcast justifications
 func (b *Board) PushJustifications(bundle *dkg.JustificationBundle) {
-	// dont push justifications to nodes, allowing them to finish with error
+	b.logger.Info("Pushing justifications bundle: ", zap.Int("num of justifications", len(bundle.Justifications)))
+	byts, err := wire2.EncodeJustificationBundle(bundle)
+	if err != nil {
+		b.logger.Error("error encoding justifications bundle", zap.Error(err))
+		return
+	}
+	msg := &wire2.KyberMessage{
+		Type: wire2.KyberJustificationBundleMessageType,
+		Data: byts,
+	}
+
+	if err := b.broadcastF(msg); err != nil {
+		b.logger.Error("error broadcasting justifications bundle", zap.Error(err))
+		return
+	}
 }
 
 // IncomingJustification implements a kyber DKG Board interface function

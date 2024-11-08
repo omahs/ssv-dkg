@@ -11,17 +11,22 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/bloxapp/eth2-key-manager/core"
 	"github.com/bloxapp/ssv/logging"
+	kyber_bls12381 "github.com/drand/kyber-bls12381"
+	"github.com/drand/kyber/share/dkg"
+	kyber_dkg "github.com/drand/kyber/share/dkg"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/herumi/bls-eth-go-binary/bls"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	e2m_core "github.com/bloxapp/eth2-key-manager/core"
 	spec "github.com/ssvlabs/dkg-spec"
 	spec_crypto "github.com/ssvlabs/dkg-spec/crypto"
 	"github.com/ssvlabs/dkg-spec/testing/stubs"
 	"github.com/ssvlabs/ssv-dkg/pkgs/crypto"
 	"github.com/ssvlabs/ssv-dkg/pkgs/initiator"
+	"github.com/ssvlabs/ssv-dkg/pkgs/utils"
 	"github.com/ssvlabs/ssv-dkg/pkgs/utils/test_utils"
 	"github.com/ssvlabs/ssv-dkg/pkgs/validator"
 	"github.com/ssvlabs/ssv-dkg/pkgs/wire"
@@ -417,4 +422,229 @@ func must[T any](v T, err error) T {
 		panic(err)
 	}
 	return v
+}
+
+func TestDKGFailWithOperatorsMisbehave(t *testing.T) {
+	err := logging.SetGlobalLogger("debug", "capital", "console", nil)
+	require.NoError(t, err)
+	logger := zap.L().Named("operator-tests")
+	ops := wire.OperatorsCLI{}
+	version := "test.version"
+	stubClient := &stubs.Client{
+		CallContractF: func(call ethereum.CallMsg) ([]byte, error) {
+			return nil, nil
+		},
+	}
+	srv1 := test_utils.CreateTestOperatorFromFile(t, 1, "../../examples/operator1", version, operatorCert, operatorKey, stubClient)
+	srv2 := test_utils.CreateTestOperatorFromFile(t, 2, "../../examples/operator2", version, operatorCert, operatorKey, stubClient)
+	srv3 := test_utils.CreateTestOperatorFromFile(t, 3, "../../examples/operator3", version, operatorCert, operatorKey, stubClient)
+	srv4 := test_utils.CreateTestOperatorFromFile(t, 4, "../../examples/operator4", version, operatorCert, operatorKey, stubClient)
+	srvs := map[uint64]*test_utils.TestOperator{1: srv1, 2: srv2, 3: srv3, 4: srv4}
+
+	ops = append(
+		ops,
+		wire.OperatorCLI{Addr: srv1.HttpSrv.URL, ID: 1, PubKey: &srv1.PrivKey.PublicKey},
+		wire.OperatorCLI{Addr: srv2.HttpSrv.URL, ID: 2, PubKey: &srv2.PrivKey.PublicKey},
+		wire.OperatorCLI{Addr: srv3.HttpSrv.URL, ID: 3, PubKey: &srv3.PrivKey.PublicKey},
+		wire.OperatorCLI{Addr: srv4.HttpSrv.URL, ID: 4, PubKey: &srv4.PrivKey.PublicKey},
+	)
+	withdraw := common.HexToAddress("0x0000000000000000000000000000000000000009")
+	owner := common.HexToAddress("0x0000000000000000000000000000000000000007")
+	ids := []uint64{1, 2, 3, 4}
+	t.Run("operator cheat with deal bundle", func(t *testing.T) {
+		intr, err := initiator.New(ops, logger, "test.version", rootCert, false)
+		require.NoError(t, err)
+		id := spec.NewID()
+
+		ops, err := initiator.ValidatedOperatorData(ids, intr.Operators)
+		require.NoError(t, err)
+		threshold := utils.GetThreshold(ids)
+		init := &spec.Init{
+			Operators:             ops,
+			T:                     uint64(threshold),
+			WithdrawalCredentials: withdraw.Bytes(),
+			Fork:                  e2m_core.NetworkFromString("mainnet").GenesisForkVersion(),
+			Owner:                 owner,
+			Nonce:                 0,
+			Amount:                uint64(spec_crypto.MIN_ACTIVATION_BALANCE),
+		}
+
+		exchangeMsgs, _, err := intr.SendInitMsg(id, init, ops)
+		require.NoError(t, err)
+		kyberMsgs, _, err := intr.SendExchangeMsgs(id, exchangeMsgs, ops)
+		require.NoError(t, err)
+
+		tsp := &wire.SignedTransport{}
+		err = tsp.UnmarshalSSZ(kyberMsgs[1])
+		require.NoError(t, err)
+
+		kyberMsg := &wire.KyberMessage{}
+		err = kyberMsg.UnmarshalSSZ(tsp.Message.Data)
+		require.NoError(t, err)
+
+		// decode deal bundle
+		d, err := wire.DecodeDealBundle(kyberMsg.Data, kyber_bls12381.NewBLS12381Suite().G1().(kyber_dkg.Suite))
+		require.NoError(t, err)
+
+		// try to cheat
+		cheatDealShare, err := hex.DecodeString("a262a2a96d170658f68cf2450106949e92b9c415c3add2dbb8ce1a09886cf24f12f4f2ff1043b372090b06ce9a328a6f64b4279125902a244a22aa4ae30e16249186b1ae3a2c2c6a29634215a84e86fae66862013d8db1cdc930a8b1502750d8")
+		require.NoError(t, err)
+		d.Deals[0].EncryptedShare = cheatDealShare
+		bundle := &dkg.DealBundle{
+			DealerIndex: d.DealerIndex,
+			Deals:       d.Deals,
+			Public:      d.Public,
+			SessionID:   d.SessionID,
+			Signature:   d.Signature,
+		}
+
+		byts, err := wire.EncodeDealBundle(bundle)
+		require.NoError(t, err)
+
+		// send corrupted kyber message to get justification error from protocol
+		msg := &wire.KyberMessage{
+			Type: wire.KyberDealBundleMessageType,
+			Data: byts,
+		}
+		byts, err = msg.MarshalSSZ()
+		require.NoError(t, err)
+
+		trsp := &wire.Transport{
+			Type:       wire.KyberMessageType,
+			Identifier: id,
+			Data:       byts,
+			Version:    intr.Version,
+		}
+		bts, err := trsp.MarshalSSZ()
+		require.NoError(t, err)
+
+		// Sign message with RSA private key
+		sign, err := srv1.Srv.State.Sign(bts)
+		require.NoError(t, err)
+
+		pub, err := spec_crypto.EncodeRSAPublicKey(&srv1.Srv.State.PrivateKey.PublicKey)
+		require.NoError(t, err)
+
+		signed := &wire.SignedTransport{
+			Message:   trsp,
+			Signer:    pub,
+			Signature: sign,
+		}
+		final, err := signed.MarshalSSZ()
+		kyberMsgs[srv1.ID] = final
+		require.NoError(t, err)
+
+		dkgResult, errs, err := intr.SendKyberMsgs(id, kyberMsgs, ops)
+		require.NoError(t, err)
+
+		for _, err := range errs {
+			require.NoError(t, err)
+		}
+		var finalResults [][]byte
+		for _, res := range dkgResult {
+			finalResults = append(finalResults, res)
+		}
+
+		_, _, _, err = intr.CreateCeremonyResults(finalResults, id, init.Operators, init.WithdrawalCredentials, nil, init.Fork, init.Owner, init.Nonce, phase0.Gwei(init.Amount))
+		require.ErrorContains(t, err, "received response message")
+	})
+
+	t.Run("operator send empty bundle", func(t *testing.T) {
+		intr, err := initiator.New(ops, logger, "test.version", rootCert, false)
+		require.NoError(t, err)
+		id := spec.NewID()
+
+		ops, err := initiator.ValidatedOperatorData(ids, intr.Operators)
+		require.NoError(t, err)
+		threshold := utils.GetThreshold(ids)
+		init := &spec.Init{
+			Operators:             ops,
+			T:                     uint64(threshold),
+			WithdrawalCredentials: withdraw.Bytes(),
+			Fork:                  e2m_core.NetworkFromString("mainnet").GenesisForkVersion(),
+			Owner:                 owner,
+			Nonce:                 0,
+			Amount:                uint64(spec_crypto.MIN_ACTIVATION_BALANCE),
+		}
+
+		exchangeMsgs, _, err := intr.SendInitMsg(id, init, ops)
+		require.NoError(t, err)
+		kyberMsgs, _, err := intr.SendExchangeMsgs(id, exchangeMsgs, ops)
+		require.NoError(t, err)
+
+		for i, msg := range kyberMsgs {
+			tsp := &wire.SignedTransport{}
+			err = tsp.UnmarshalSSZ(msg)
+			require.NoError(t, err)
+
+			kyberMsg := &wire.KyberMessage{}
+			err = kyberMsg.UnmarshalSSZ(tsp.Message.Data)
+			require.NoError(t, err)
+			// decode deal bundle
+			d, err := wire.DecodeDealBundle(kyberMsg.Data, kyber_bls12381.NewBLS12381Suite().G1().(kyber_dkg.Suite))
+			require.NoError(t, err)
+			bundle := &dkg.DealBundle{
+				DealerIndex: d.DealerIndex,
+				Deals:       []kyber_dkg.Deal{},
+				Public:      d.Public,
+				SessionID:   d.SessionID,
+				Signature:   d.Signature,
+			}
+
+			byts, err := wire.EncodeDealBundle(bundle)
+			require.NoError(t, err)
+
+			// send corrupted kyber message to get justification error from protocol
+			msg := &wire.KyberMessage{
+				Type: wire.KyberDealBundleMessageType,
+				Data: byts,
+			}
+			byts, err = msg.MarshalSSZ()
+			require.NoError(t, err)
+
+			trsp := &wire.Transport{
+				Type:       wire.KyberMessageType,
+				Identifier: id,
+				Data:       byts,
+				Version:    intr.Version,
+			}
+			bts, err := trsp.MarshalSSZ()
+			require.NoError(t, err)
+
+			// Sign message with RSA private key
+			sign, err := srvs[i].Srv.State.Sign(bts)
+			require.NoError(t, err)
+
+			pub, err := spec_crypto.EncodeRSAPublicKey(&srvs[i].Srv.State.PrivateKey.PublicKey)
+			require.NoError(t, err)
+
+			signed := &wire.SignedTransport{
+				Message:   trsp,
+				Signer:    pub,
+				Signature: sign,
+			}
+			final, err := signed.MarshalSSZ()
+			require.NoError(t, err)
+			kyberMsgs[i] = final
+		}
+
+		dkgResult, errs, err := intr.SendKyberMsgs(id, kyberMsgs, ops)
+		require.NoError(t, err)
+
+		for _, err := range errs {
+			require.NoError(t, err)
+		}
+		var finalResults [][]byte
+		for _, res := range dkgResult {
+			finalResults = append(finalResults, res)
+		}
+
+		_, _, _, err = intr.CreateCeremonyResults(finalResults, id, init.Operators, init.WithdrawalCredentials, nil, init.Fork, init.Owner, init.Nonce, phase0.Gwei(init.Amount))
+		require.ErrorContains(t, err, "received response message")
+	})
+
+	srv1.HttpSrv.Close()
+	srv2.HttpSrv.Close()
+	srv3.HttpSrv.Close()
+	srv4.HttpSrv.Close()
 }
