@@ -51,7 +51,7 @@ In order for the DKG protocol to execute successfully:
 
 - all the chosen Operators must be running the `ssv-dkg` tool as Operators
 - separately, an Initiator (one of the Operators, or a separate entity), starts the DKG ceremony by running the ssv-dkg tool with the init parameter
-- the tool automatically exchange data between the interested parties, as outlined in the [Flow Description](#flow-description) section, until the key shares are created
+- the tool automatically exchanges data between the interested parties, as outlined in the [Flow Description](#flow-description) section, until the key shares are created
 
 For details on how to run the tool as an Operator, please head over [to this section containing the related instructions](#operator-quick-start).
 Similarly, head over to [this other section](#initiator-quick-start) for instructions on how to launch the tool as the Initiator of the DKG ceremony.
@@ -121,7 +121,7 @@ There are a couple of options to launch the DKG tool:
 - [Launch with Docker and YAML file](#launch-with-docker-and-yaml-file)
 - [Build from source](#build-from-source)
 
-It is advised launching the tool as a Docker image as it is the most convenient way and only requires to have Docker installed. The team builds a Docker image with every release of the tool.
+It is advised to launch the tool as a Docker image as it is the most convenient way and only requires to have Docker installed. The team builds a Docker image with every release of the tool.
 
 #### Launch with Docker and YAML file
 
@@ -354,7 +354,7 @@ There are a couple of options to launch the DKG tool:
 - [Launch with Docker and YAML file](#launch-with-docker-and-yaml-file-1)
 - [Build from source](#build-from-source-1)
 
-It is advised launching the tool as a Docker image as it is the most convenient way and only requires to have Docker installed. The team builds a Docker image with every release of the tool.
+It is advised to launch the tool as a Docker image as it is the most convenient way and only requires to have Docker installed. The team builds a Docker image with every release of the tool.
 
 #### Launch with Docker and YAML file
 
@@ -502,7 +502,7 @@ make docker-build-image # build the Docker image
 make docker-demo-operators # run 4 local operators
 ```
 
-3. In a separate terminal window, run inititator
+3. In a separate terminal window, run initiator
 
 ```sh
 make docker-demo-initiator # run 1 local initiator
@@ -526,9 +526,9 @@ Results will be placed to `examples/[operator.../inititator]/output`
 6. The Initiator packs the deal bundles together and sends them back to all Operators
 7. Operators process dkg bundles and finish the DKG protocol of creating a shared key. After DKG process is finished each Operator has a share of the shared key which can be used for signing
 8. Each Operator signs a deposit root, using its share of the shared key, then encrypts the share with the initial RSA key and sends it to the Initiator
-9. Initiator receives all messages from Operators with signatures/encrypted shares and prepares the deposit data with a signature and save it as JSON file
+9. Initiator receives all messages from Operators with signatures/encrypted shares and prepares the deposit data with a signature and saves it as JSON file
 10. Initiator prepares a payload for SSV contract
-11. After the deposit is successful and SSV contract transaction is accepted, Operators can continue with their duties using their share of the distributes key
+11. After the deposit is successful and SSV contract transaction is accepted, Operators can continue with their duties using their share of the distributed key
 
 > ℹ️ NOTE: Threshold is computed automatically using 3f+1 tolerance.
 
@@ -543,7 +543,7 @@ It is important to briefly explain how the communication between DKG ceremony In
 1. Initiator is using RSA key (2048 bits) to sign init message sent to Operators. Upon receiving the signature, Operators verify it using public key included in the init message. If the signature is valid, Operators store this pub key for further verification of messages coming from the Initiator(s).
 2. Operators are using RSA key (ssv Operator key - 2048 bits) to sign every message sent back to Initiator.
 3. Initiator verifies every incoming message from any Operator using ID and Public Key provided by Operators' info file, then Initiator creates a combined message and signs it.
-4. Operators verify each of the messages from other Operators participating in the ceremony and verifies Initiator's signature of the combined message.
+4. Operators verify each of the messages from other Operators participating in the ceremony and verify Initiator's signature of the combined message.
 5. During the DKG protocol execution, the BLS auth scheme is used - G2 for its signature space and G1 for its public keys
 
 ---
