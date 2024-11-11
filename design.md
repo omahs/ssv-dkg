@@ -12,17 +12,17 @@
 - `Exchange` signed message containing the DKG identity is created
 - operator replies to init message with the created `Exchange` message
 
-3. The initiator collects all responses into one message and verify signatures
+3. The initiator collects all responses into one message and verifies signatures
 4. The initiator sends back to all operators the combined message (/dkg)
 5. Operators receive all exchange messages to start the DKG process, responding back to initiator with a signed dkg deal bundle
 6. Initiator packs the deal bundles together and sends them back to all operators (/dkg)
 7. Operators process dkg bundles and finish the DKG protocol of creating a shared key. After DKG process is finished each operator has a share of the shared key which can be used for signing
 8. Operator using its share of the shared key signs a deposit root, encrypts with the initial RSA key the share and sends it to the initiator
-9. Initiator receives all messages from operators with signatures/encrypted shares and prepares the deposit data with a signature and save it as JSON file
+9. Initiator receives all messages from operators with signatures/encrypted shares and prepares the deposit data with a signature and saves it as JSON file
 10. Initiator prepares a payload for SSV contract
-11. After the deposit is successfull and SSV contract transaction is accepted, operators can continue with their duties using their share of the distributes key
+11. After the deposit is successful and SSV contract transaction is accepted, operators can continue with their duties using their share of the distributed key
 
-The result of successfull DKG protocol at operator side:
+The result of successful DKG protocol at operator side:
 
 ```go
 type Result struct {
