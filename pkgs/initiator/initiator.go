@@ -215,13 +215,10 @@ func (c *Initiator) ResignMessageFlowHandling(signedResign *wire.SignedResign, i
 	// reqIDtracker is used to track if all ceremony are in the responses in the expected order
 	reqIDs := make([][24]byte, 0)
 	for _, msg := range signedResign.Messages {
-		hash, err := utils.GetReqIDfromMsg(msg)
+		msgID, err := utils.GetReqIDfromMsg(msg, id)
 		if err != nil {
 			return nil, err
 		}
-		msgID := [24]byte{}
-		copy(msgID[:12], id[:12])
-		copy(msgID[12:24], hash[:12])
 		reqIDs = append(reqIDs, msgID)
 	}
 	resignResult, errs, err := c.SendResignMsg(id, signedResign, operators)
@@ -273,13 +270,10 @@ func (c *Initiator) ReshareMessageFlowHandling(id [24]byte, signedReshare *wire.
 	// reqIDtracker is used to track if all ceremony are in the responses in the expected order
 	reqIDs := make([][24]byte, 0)
 	for _, msg := range signedReshare.Messages {
-		hash, err := utils.GetReqIDfromMsg(msg)
+		msgID, err := utils.GetReqIDfromMsg(msg, id)
 		if err != nil {
 			return nil, err
 		}
-		msgID := [24]byte{}
-		copy(msgID[:12], id[:12])
-		copy(msgID[12:24], hash[:12])
 		reqIDs = append(reqIDs, msgID)
 	}
 	c.Logger.Info("sending signed reshare message to all operators")
@@ -400,13 +394,10 @@ func (c *Initiator) StartResigning(id [24]byte, signedResign *wire.SignedResign)
 	}
 	resignIDMap := make(map[[24]byte]*spec.Resign)
 	for _, msg := range signedResign.Messages {
-		hash, err := utils.GetReqIDfromMsg(msg)
+		msgID, err := utils.GetReqIDfromMsg(msg, id)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		msgID := [24]byte{}
-		copy(msgID[:12], id[:12])
-		copy(msgID[12:24], hash[:12])
 		resignIDMap[msgID] = msg.Resign
 	}
 	var operatorIDs []uint64
@@ -520,13 +511,10 @@ func (c *Initiator) StartResharing(id [24]byte, signedReshare *wire.SignedReshar
 	}
 	reshareIDMap := make(map[[24]byte]*spec.Reshare)
 	for _, msg := range signedReshare.Messages {
-		hash, err := utils.GetReqIDfromMsg(msg)
+		msgID, err := utils.GetReqIDfromMsg(msg, id)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		msgID := [24]byte{}
-		copy(msgID[:12], id[:12])
-		copy(msgID[12:24], hash[:12])
 		reshareIDMap[msgID] = msg.Reshare
 	}
 	oldOperatorIDs := make([]uint64, 0)
@@ -981,4 +969,11 @@ func (c *Initiator) createBulkResults(resultsBytes [][][]byte, signedMsg, msgIDM
 		bulkProofs = append(bulkProofs, Proofs)
 	}
 	return bulkDepositData, bulkKeyShares, bulkProofs, nil
+}
+
+func getInstanceID(id, hash []byte) [24]byte {
+	msgID := [24]byte{}
+	copy(msgID[:12], id[:12])
+	copy(msgID[12:24], hash[:12])
+	return msgID
 }

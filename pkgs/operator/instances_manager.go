@@ -297,13 +297,10 @@ func (s *Switch) validateInstances(reqID InstanceID) error {
 }
 
 func (s *Switch) runInstance(reqID [24]byte, instance interface{}, allOps []*spec.Operator, initiatorPubKey *rsa.PublicKey, operationType string) ([]byte, error) {
-	instanceID := [24]byte{}
-	hash, err := utils.GetReqIDfromMsg(instance)
+	instanceID, err := utils.GetReqIDfromMsg(instance, reqID)
 	if err != nil {
 		return nil, err
 	}
-	copy(instanceID[:12], reqID[:12])
-	copy(instanceID[12:24], hash[:12])
 	if err := s.validateInstances(instanceID); err != nil {
 		return nil, err
 	}
